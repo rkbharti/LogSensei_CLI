@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/rkbharti/devdebug/internal/analyzer"
 	"github.com/rkbharti/devdebug/internal/input"
 	"github.com/rkbharti/devdebug/internal/patterns"
 	"github.com/spf13/cobra"
@@ -36,16 +37,28 @@ var analyzeCmd = &cobra.Command{
 
 		// Detect erros
 		errors := patterns.DetectErrors(lines)
+
 		fmt.Println("\n🚨 Error Report:")
 
 		for _, e := range errors {
 			fmt.Printf("🔴 ERROR DETECTED (Line %d)\n", e.LineNumber)
 			fmt.Println("Type:", e.Type)
 			fmt.Println("Message:", e.Message)
-			fmt.Println("-----------------------------")
+			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		}
 
-		fmt.Printf("\n Total Erros Found : %d\n", len(errors))
+		// 🔥 Aggregate Errors``
+		summary := analyzer.AggregateErrors(errors)
+
+		fmt.Println("\n📊 SUMMARY REPORT")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Printf("Total Errors: %d\n\n", summary.TotalErrors)
+
+		fmt.Println("Top Issues:")
+
+		for errType, count := range summary.ErrorCount {
+			fmt.Printf("• %s → %d time\n", errType, count)
+		}
 
 	},
 }
