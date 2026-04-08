@@ -6,6 +6,7 @@ type ErrorMatch struct {
 	LineNumber int
 	Type       string
 	Message    string
+	Context    string
 }
 
 // DetectErrors scans logs and finds errors
@@ -15,18 +16,25 @@ func DetectErrors(lines []string) []ErrorMatch {
 	for i, line := range lines {
 
 		lower := strings.ToLower(line)
+		var context string
+		// to get next line of log/ code / or any file
+		if i+1 < len(lines) {
+			context = lines[i+1]
+		}
 
 		if strings.Contains(lower, "panic") {
 			errors = append(errors, ErrorMatch{
 				LineNumber: i + 1,
 				Type:       "Panic Error",
 				Message:    line,
+				Context:    context,
 			})
 		} else if strings.Contains(lower, "error") {
 			errors = append(errors, ErrorMatch{
 				LineNumber: i + 1,
 				Type:       "General Error",
 				Message:    line,
+				Context: context,
 			})
 		} else if strings.Contains(lower, "timeout") {
 			errors = append(errors, ErrorMatch{

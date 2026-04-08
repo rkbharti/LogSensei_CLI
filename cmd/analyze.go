@@ -7,6 +7,7 @@ import (
 	"github.com/rkbharti/devdebug/internal/analyzer"
 	"github.com/rkbharti/devdebug/internal/input"
 	"github.com/rkbharti/devdebug/internal/patterns"
+	"github.com/rkbharti/devdebug/internal/stacktrace"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +44,12 @@ var analyzeCmd = &cobra.Command{
 		for _, e := range errors {
 			fmt.Printf("🔴 ERROR DETECTED (Line %d)\n", e.LineNumber)
 			fmt.Println("Type:", e.Type)
+			info := stacktrace.ExtractFileLine(e.Context)
+
 			fmt.Println("Message:", e.Message)
+			fmt.Println("Location:")
+			fmt.Println("→ File:", info.File)
+			fmt.Println("→ Line:", info.Line)
 			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		}
 
