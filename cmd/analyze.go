@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rkbharti/devdebug/internal/analyzer"
+	"github.com/rkbharti/devdebug/internal/export"
 	"github.com/rkbharti/devdebug/internal/input"
 	"github.com/rkbharti/devdebug/internal/patterns"
 	"github.com/rkbharti/devdebug/internal/stacktrace"
@@ -15,6 +16,7 @@ import (
 )
 
 var filterType string
+var outputFormat string
 
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze [file]",
@@ -136,6 +138,28 @@ var analyzeCmd = &cobra.Command{
 				fmt.Printf("• %s → %d times\n", errType, count)
 			}
 		}
+		if outputFormat != "" {
+
+			var exportErr error
+
+			switch outputFormat {
+			case "json":
+				exportErr = export.ExportJSON(summaryData)
+				fmt.Println("📁 Report exported as report.json")
+
+			case "md":
+				exportErr = export.ExportMarkdown(summaryData)
+				fmt.Println("📁 Report exported as report.md")
+
+			default:
+				fmt.Println("❌ Unsupported format. Use json or md")
+				return
+			}
+
+			if exportErr != nil {
+				fmt.Println("❌ Export failed:", exportErr)
+			}
+		}
 	},
 }
 
@@ -148,5 +172,12 @@ func init() {
 		"t",
 		"",
 		"Filter errors by type (panic, error, timeout)",
+	)
+	analyzeCmd.Flags().StringVarP(
+		&outputFormat,
+		"format",
+		"f",
+		"",
+		"Export Format : json or md",
 	)
 }
