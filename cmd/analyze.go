@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rkbharti/devdebug/internal/analyzer"
+	"github.com/rkbharti/devdebug/internal/config"
 	"github.com/rkbharti/devdebug/internal/export"
 	"github.com/rkbharti/devdebug/internal/input"
 	"github.com/rkbharti/devdebug/internal/patterns"
@@ -25,6 +26,13 @@ var analyzeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig("devdebug.yaml")
+
+		if err != nil {
+			fmt.Println("⚠️ Config not loaded (using default rules)",err)
+
+			cfg = nil // fallback to default detection
+		}
 		file := args[0]
 
 		info, err := os.Stat(file)
@@ -42,7 +50,7 @@ var analyzeCmd = &cobra.Command{
 
 			err := input.FollowFile(file, func(line string) {
 
-				e := patterns.DetectError(line, 0, "")
+				e := patterns.DetectError(line, 0, "", cfg) // ✅ FIXED
 
 				if e != nil {
 					fmt.Println(ui.ErrorStyle.Render("\n🔴 ERROR DETECTED"))
@@ -99,11 +107,11 @@ var analyzeCmd = &cobra.Command{
 						return
 					}
 
-					e := patterns.DetectError(line, lineNum, "")
+					e := patterns.DetectError(line, lineNum, "", cfg) // ✅ FIXED
 					if e != nil {
-						e.File = f.Name() // ✅ correct file name
+						e.File = f.Name()
 
-						errors = append(errors, *e) // ✅ FIXED
+						errors = append(errors, *e)
 						lastError = &errors[len(errors)-1]
 					}
 				})
@@ -122,9 +130,9 @@ var analyzeCmd = &cobra.Command{
 					return
 				}
 
-				e := patterns.DetectError(line, lineNum, "")
+				e := patterns.DetectError(line, lineNum, "", cfg) // ✅ FIXED
 				if e != nil {
-					e.File = file // ✅ add file name
+					e.File = file
 
 					errors = append(errors, *e)
 					lastError = &errors[len(errors)-1]
@@ -154,7 +162,6 @@ var analyzeCmd = &cobra.Command{
 			filteredErrors = append(filteredErrors, e)
 
 			fmt.Println(ui.ErrorStyle.Render("🔴 ERROR DETECTED"))
-			//print log location or file name with line number if we have multiple logs
 			fmt.Println(ui.InfoStyle.Render(
 				fmt.Sprintf("Log Location: %s (Line %d)", e.File, e.LineNumber),
 			))
@@ -204,9 +211,7 @@ var analyzeCmd = &cobra.Command{
 			}
 		}
 
-		// file count map to show which file have how much error
 		fileCount := make(map[string]int)
-
 		for _, e := range summaryData {
 			fileCount[e.File]++
 		}

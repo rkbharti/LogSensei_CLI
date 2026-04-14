@@ -2,6 +2,8 @@ package patterns
 
 import (
 	"strings"
+
+	"github.com/rkbharti/devdebug/internal/config"
 )
 
 type ErrorMatch struct {
@@ -12,9 +14,34 @@ type ErrorMatch struct {
 	File       string
 }
 
-// DetectErrors scans logs and finds errors
-func DetectError(line string, lineNum int, context string) *ErrorMatch {
+// DetectError scans a single log line and returns matched error
+func DetectError(line string, lineNum int, context string, cfg *config.Config) *ErrorMatch {
+
 	lower := strings.ToLower(line)
+
+	// 🔥 1. CUSTOM CONFIG PATTERNS (SAFE + VALIDATED)
+	if cfg != nil {
+		for _, p := range cfg.Patterns {
+
+			keyword := strings.TrimSpace(p.Keyword)
+
+			// 🚫 skip invalid patterns
+			if keyword == "" {
+				continue
+			}
+
+			if strings.Contains(lower, strings.ToLower(keyword)) {
+				return &ErrorMatch{
+					LineNumber: lineNum,
+					Type:       p.Name,
+					Message:    line,
+					Context:    context,
+				}
+			}
+		}
+	}
+
+	// 🔥 2. DEFAULT PATTERNS
 
 	if strings.Contains(lower, "panic") {
 		return &ErrorMatch{

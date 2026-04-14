@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/rkbharti/devdebug/internal/analyzer"
+	"github.com/rkbharti/devdebug/internal/config"
 	"github.com/rkbharti/devdebug/internal/input"
 	"github.com/rkbharti/devdebug/internal/patterns"
+
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,14 @@ var compareCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 
 	Run: func(cmd *cobra.Command, args []string) {
+
+		cfg, err := config.LoadConfig("devdebug.yaml")
+
+		if err != nil {
+			fmt.Println("⚠️ Config not loaded (using default rules)", err)
+
+			cfg = nil // fallback to default detection
+		} //  ADD CONFIG
 
 		oldFile := args[0]
 		newFile := args[1]
@@ -32,8 +42,8 @@ var compareCmd = &cobra.Command{
 
 		fmt.Println("🔍 Comparing logs...")
 
-		oldErrors := analyzeFile(oldFile)
-		newErrors := analyzeFile(newFile)
+		oldErrors := analyzeFile(oldFile, cfg) // ✅ pass cfg
+		newErrors := analyzeFile(newFile, cfg) // ✅ pass cfg
 
 		oldSummary := analyzer.AggregateErrors(oldErrors)
 		newSummary := analyzer.AggregateErrors(newErrors)
@@ -51,6 +61,7 @@ var compareCmd = &cobra.Command{
 		} else {
 			fmt.Println("⚖️ No change in error count")
 		}
+
 		oldMap := buildErrorMap(oldErrors, oldFile)
 		newMap := buildErrorMap(newErrors, newFile)
 
@@ -101,7 +112,7 @@ var compareCmd = &cobra.Command{
 
 				fmt.Println("  → File:", files[0])
 
-				foundFixed = true // ✅ IMPORTANT
+				foundFixed = true
 			}
 		}
 
@@ -112,6 +123,7 @@ var compareCmd = &cobra.Command{
 		// ⚖️ Unchanged Errors
 		fmt.Println("\n⚖️ Unchanged Errors:")
 		foundSame := false
+
 		for msg, files := range newMap {
 			if _, exists := oldMap[msg]; exists {
 
@@ -124,17 +136,19 @@ var compareCmd = &cobra.Command{
 				}
 
 				fmt.Println("  → File:", newFile)
+
 				foundSame = true
 			}
 		}
+
 		if !foundSame {
 			fmt.Println("None")
 		}
 	},
 }
 
-// reuse your existing logic
-func analyzeFile(file string) []patterns.ErrorMatch {
+// 🔥 UPDATED: now accepts config
+func analyzeFile(file string, cfg *config.Config) []patterns.ErrorMatch {
 
 	var errors []patterns.ErrorMatch
 	var lastError *patterns.ErrorMatch
@@ -147,7 +161,7 @@ func analyzeFile(file string) []patterns.ErrorMatch {
 			return
 		}
 
-		e := patterns.DetectError(line, lineNum, "")
+		e := patterns.DetectError(line, lineNum, "", cfg) // ✅ FIXED
 		if e != nil {
 			errors = append(errors, *e)
 			lastError = &errors[len(errors)-1]
