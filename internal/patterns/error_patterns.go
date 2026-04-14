@@ -12,51 +12,35 @@ type ErrorMatch struct {
 }
 
 // DetectErrors scans logs and finds errors
-func DetectErrors(lines []string) []ErrorMatch {
-	var errors []ErrorMatch
+func DetectError(line string, lineNum int, context string) *ErrorMatch {
+	lower := strings.ToLower(line)
 
-	for i, line := range lines {
-
-		lower := strings.ToLower(line)
-
-		// to get next line of log/ code / or any file
-		var context string
-
-		// check next lines safely
-		for j := i + 1; j < len(lines); j++ {
-			next := strings.TrimSpace(lines[j])
-
-			if next == "" {
-				continue
-			}
-
-			context = next
-			break
-		}
-
-		if strings.Contains(lower, "panic") {
-			errors = append(errors, ErrorMatch{
-				LineNumber: i + 1,
-				Type:       "Panic Error",
-				Message:    line,
-				Context:    context,
-			})
-		} else if strings.Contains(lower, "error") {
-			errors = append(errors, ErrorMatch{
-				LineNumber: i + 1,
-				Type:       "General Error",
-				Message:    line,
-				Context:    context,
-			})
-		} else if strings.Contains(lower, "timeout") {
-			errors = append(errors, ErrorMatch{
-				LineNumber: i + 1,
-				Type:       "Timeout Error",
-				Message:    line,
-				Context:    context,
-			})
+	if strings.Contains(lower, "panic") {
+		return &ErrorMatch{
+			LineNumber: lineNum,
+			Type:       "Panic Error",
+			Message:    line,
+			Context:    context,
 		}
 	}
 
-	return errors
+	if strings.Contains(lower, "error") {
+		return &ErrorMatch{
+			LineNumber: lineNum,
+			Type:       "General Error",
+			Message:    line,
+			Context:    context,
+		}
+	}
+
+	if strings.Contains(lower, "timeout") {
+		return &ErrorMatch{
+			LineNumber: lineNum,
+			Type:       "Timeout Error",
+			Message:    line,
+			Context:    context,
+		}
+	}
+
+	return nil
 }

@@ -2,38 +2,25 @@ package input
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 )
 
-// ReadFile reads log file line by line
-func ReadFile(filePath string) ([]string, error) {
-	var lines []string
+// process stream file line-by-line
 
-	file, err := os.Open(filePath)
+func ProcessFile(filepath string, handle func(string, int)) error {
+	file, err := os.Open(filepath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 
+	lineNum := 1
+
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		handle(scanner.Text(), lineNum)
+		lineNum++
 	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return lines, nil
-}
-
-// PrintLines prints logs with line numbers
-func PrintLines(lines []string) {
-	fmt.Println("\n📄 Reading logs...")
-
-	for i, line := range lines {
-		fmt.Printf("%d: %s\n", i+1, line)
-	}
+	return scanner.Err()
 }

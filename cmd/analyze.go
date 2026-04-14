@@ -33,17 +33,35 @@ var analyzeCmd = &cobra.Command{
 		fmt.Println(ui.SuccessStyle.Render("✅ File found: " + file))
 		fmt.Println(ui.InfoStyle.Render("🔍 Starting analysis..."))
 
-		// read file
-		lines, err := input.ReadFile(file)
+		// read file with streaming logic
+		var errors []patterns.ErrorMatch
+
+		var lastError *patterns.ErrorMatch
+
+		err := input.ProcessFile(file, func(line string, lineNum int) {
+
+			// If previous error exists → use this line as context
+			if lastError != nil && strings.TrimSpace(line) != "" {
+				lastError.Context = line
+				lastError = nil
+				return
+			}
+
+			// Detect new error
+			e := patterns.DetectError(line, lineNum, "")
+
+			if e != nil {
+				errors = append(errors, *e)
+
+				// store pointer to update context next line
+				lastError = &errors[len(errors)-1]
+			}
+		})
+
 		if err != nil {
 			fmt.Println(ui.ErrorStyle.Render("❌ Error reading file: " + err.Error()))
 			return
 		}
-
-		input.PrintLines(lines)
-
-		// detect errors
-		errors := patterns.DetectErrors(lines)
 
 		fmt.Println(ui.TitleStyle.Render("\n🚨 ERROR REPORT"))
 
