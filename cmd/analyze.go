@@ -17,6 +17,7 @@ import (
 
 var filterType string
 var outputFormat string
+var follow bool
 
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze [file]",
@@ -35,7 +36,38 @@ var analyzeCmd = &cobra.Command{
 		fmt.Println(ui.SuccessStyle.Render("✅ File found: " + file))
 		fmt.Println(ui.InfoStyle.Render("🔍 Starting analysis..."))
 
-		// read file with streaming logic
+		// ADD WATCH BLOCK(MODE)
+		if follow {
+			fmt.Println("👀 Watching log file in real-time...")
+
+			err := input.FollowFile(file, func(line string) {
+
+				e := patterns.DetectError(line, 0, "")
+
+				if e != nil {
+
+					fmt.Println(ui.ErrorStyle.Render("\n🔴 ERROR DETECTED"))
+					fmt.Println("Type:", e.Type)
+					fmt.Println("Message:", e.Message)
+
+					exp := analyzer.ExplainError(e.Message)
+
+					fmt.Println("\nExplanation:")
+					fmt.Println(exp.Reason)
+
+					fmt.Println("\nSuggestion:")
+					fmt.Println(exp.Suggestion)
+				}
+			})
+
+			if err != nil {
+				fmt.Println("❌ Watch failed:", err)
+			}
+
+			return
+		}
+
+		// read file with streaming logic nd processuing file
 		var errors []patterns.ErrorMatch
 
 		var lastError *patterns.ErrorMatch
@@ -179,5 +211,12 @@ func init() {
 		"f",
 		"",
 		"Export Format : json or md",
+	)
+	analyzeCmd.Flags().BoolVarP(
+		&follow,
+		"follow",
+		"",
+		false,
+		"Follow log file in real time",
 	)
 }
