@@ -173,20 +173,23 @@ func collectErrors(filepath string, label string, compiled []config.CompiledPatt
 
 	input.ProcessFile(filepath, func(parsed input.ParsedLine, lineNum int) {
 
-		if lastError != nil {
-			if strings.TrimSpace(parsed.Raw) == "" {
-				lastError = nil
-				return
-			}
-			lastError.Context += "\n" + parsed.Raw
+		// blank line — always ends context accumulation
+		if strings.TrimSpace(parsed.Raw) == "" {
+			lastError = nil
 			return
 		}
 
-		e := patterns.DetectError(parsed, lineNum, "", compiled) // ✅
-		if e != nil {
+		// if this line is itself a new error, start fresh regardless of lastError
+		if e := patterns.DetectError(parsed, lineNum, "", compiled); e != nil {
 			e.File = label
 			errors = append(errors, *e)
 			lastError = &errors[len(errors)-1]
+			return
+		}
+
+		// not an error — append as context to the previous error if one exists
+		if lastError != nil {
+			lastError.Context += "\n" + parsed.Raw
 		}
 	})
 
