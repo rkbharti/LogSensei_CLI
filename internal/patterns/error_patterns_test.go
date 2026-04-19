@@ -181,6 +181,7 @@ func TestDetectError_CustomConfig(t *testing.T) {
 		{name: "custom keyword case insensitive", line: "Unauthorized access attempt from 192.168.1.1", wantNil: false, wantType: "Auth Fail"},
 		{name: "empty keyword pattern does not panic", line: "some random log line", wantNil: true},
 		{name: "whitespace keyword pattern does not panic", line: "another log line", wantNil: true},
+		
 	}
 
 	for _, tt := range tests {
@@ -217,5 +218,169 @@ func TestDetectError_LineNumber(t *testing.T) {
 	}
 	if result.LineNumber != 42 {
 		t.Errorf("LineNumber: got %d, want 42", result.LineNumber)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regex pattern tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestDetectError_RegexPatterns(t *testing.T) {
+
+	tests := []struct {
+		name     string
+		line     string
+		cfg      *config.Config
+		wantNil  bool
+		wantType string
+	}{
+		{
+			name: "regex matches HTTP 5xx errors",
+			line: "HTTP 500 Internal Server Error",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "5xx Error", Regex: `HTTP [5][0-9]{2}`},
+				},
+			},
+			wantNil:  false,
+			wantType: "5xx Error",
+		},
+		{
+			name: "regex does not match HTTP 4xx",
+			line: "HTTP 404 Not Found",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "5xx Error", Regex: `HTTP [5][0-9]{2}`},
+				},
+			},
+			wantNil: true,
+		},
+		{
+			name: "regex matches retry exhaustion pattern",
+			line: "failed after 5 retries — giving up",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "Retry Exhausted", Regex: `failed after [0-9]+ retr`},
+				},
+			},
+			wantNil:  false,
+			wantType: "Retry Exhausted",
+		},
+		{
+			name: "keyword takes priority over regex — keyword matched first",
+			line: "database unreachable: connection refused",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "DB Down", Keyword: "database unreachable"},
+					{Name: "Conn Refused", Regex: `connection refused`},
+				},
+			},
+			wantNil:  false,
+			wantType: "DB Down", // keyword matched first — order matters
+		},
+		{
+			name: "regex is case-sensitive by default",
+			line: "UNAUTHORIZED access attempt",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "Auth Fail", Regex: `unauthorized`}, // lowercase regex
+				},
+			},
+			wantNil: true, // regex is case-sensitive — UPPERCASE won't match
+		},
+		{
+			name: "regex with case-insensitive flag (?i) matches uppercase",
+			line: "UNAUTHORIZED access attempt",
+			cfg: &config.Config{
+				Patterns: []config.Pattern{
+					{Name: "Auth Fail", Regex: `(?i)unauthorized`}, // (?i) = case-insensitive
+				},
+			},
+			wantNil:  false,
+			wantType: "Auth Fail",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := input.ParseLine(tt.line)
+			result := DetectError(parsed, 1, "", tt.cfg)
+
+			if tt.wantNil {
+				if result != nil {
+					t.Errorf("expected nil but got: Type=%q Message=%q", result.Type, result.Message)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Fatalf("expected ErrorMatch but got nil for line: %q", tt.line)
+			}
+
+			if result.Type != tt.wantType {
+				t.Errorf("Type: got %q, want %q", result.Type, tt.wantType)
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config validation tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestConfig_ValidatePatterns(t *testing.T) {
+
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+	}{
+		{
+			name: "valid keyword pattern",
+			cfg: config.Config{
+				Patterns: []config.Pattern{{Name: "DB Down", Keyword: "database unreachable"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid regex pattern",
+			cfg: config.Config{
+				Patterns: []config.Pattern{{Name: "5xx", Regex: `HTTP [5][0-9]{2}`}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid regex fails validation",
+			cfg: config.Config{
+				Patterns: []config.Pattern{{Name: "Bad", Regex: `[invalid(`}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "pattern with no keyword and no regex fails",
+			cfg: config.Config{
+				Patterns: []config.Pattern{{Name: "Empty", Keyword: "", Regex: ""}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "pattern with no name fails",
+			cfg: config.Config{
+				Patterns: []config.Pattern{{Name: "", Keyword: "something"}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.ValidatePatterns()
+			if tt.wantErr && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("expected no error but got: %v", err)
+			}
+		})
 	}
 }
