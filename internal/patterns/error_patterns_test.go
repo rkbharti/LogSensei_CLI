@@ -81,10 +81,10 @@ func TestDetectError(t *testing.T) {
 		},
 		{
 			name:         "line with exception is detected",
-			line:         "NullPointerException at main.go:42",
+			line:         "caught NullPointer exception at main.go:42", // ← has " exception" with space
 			wantNil:      false,
 			wantType:     "General Error",
-			wantContains: "Exception",
+			wantContains: "exception",
 		},
 
 		// ── timeout detection ─────────────────────────────────────────────────

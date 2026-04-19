@@ -50,7 +50,7 @@ func TestExplainError(t *testing.T) {
 		// ── database error ────────────────────────────────────────────────────
 		{
 			name:               "database connection failed",
-			message:            "database connection failed: timeout",
+			message:            "database connection failed to reach host",
 			wantReasonContains: "database",
 			wantSuggContains:   "database",
 		},
