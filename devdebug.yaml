@@ -1,0 +1,19 @@
+# devdebug.yaml — example config with keyword + regex patterns
+
+patterns:
+  # keyword match — simple substring (case-insensitive)
+  - name: "DB Down"
+    keyword: "database unreachable"
+
+  # regex match — full regular expression power
+  - name: "5xx HTTP Error"
+    regex: "HTTP [5][0-9]{2}"
+
+  - name: "Auth Attack"
+    regex: "(?i)unauthorized.*from \\d+\\.\\d+\\.\\d+\\.\\d+"
+
+  - name: "Retry Exhausted"
+    regex: "failed after [0-9]+ retr"
+
+  - name: "Port Conflict"
+    regex: "address already in use.*:\\d+"

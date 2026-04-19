@@ -125,7 +125,7 @@ func TestDetectError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parsed := input.ParseLine(tt.line)
-			result := DetectError(parsed, 1, "", tt.cfg)
+			result := DetectError(parsed, 1, "", tt.cfg.Compile())
 
 			if tt.wantNil {
 				if result != nil {
@@ -181,13 +181,12 @@ func TestDetectError_CustomConfig(t *testing.T) {
 		{name: "custom keyword case insensitive", line: "Unauthorized access attempt from 192.168.1.1", wantNil: false, wantType: "Auth Fail"},
 		{name: "empty keyword pattern does not panic", line: "some random log line", wantNil: true},
 		{name: "whitespace keyword pattern does not panic", line: "another log line", wantNil: true},
-		
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parsed := input.ParseLine(tt.line) // ✅ fixed
-			result := DetectError(parsed, 1, "", cfg)
+			result := DetectError(parsed, 1, "", cfg.Compile())
 
 			if tt.wantNil {
 				if result != nil {
@@ -304,7 +303,7 @@ func TestDetectError_RegexPatterns(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parsed := input.ParseLine(tt.line)
-			result := DetectError(parsed, 1, "", tt.cfg)
+			result := DetectError(parsed, 1, "", tt.cfg.Compile())
 
 			if tt.wantNil {
 				if result != nil {

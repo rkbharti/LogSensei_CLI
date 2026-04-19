@@ -1,7 +1,6 @@
 package patterns
 
 import (
-	"regexp"
 	"strings"
 	"time"
 
@@ -20,8 +19,10 @@ type ErrorMatch struct {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DetectError inspects a ParsedLine and returns an ErrorMatch if it is an error.
+// compiled is the pre-compiled pattern slice from config.Config.Compile().
+// Pass nil to use only built-in default patterns.
 // ─────────────────────────────────────────────────────────────────────────────
-func DetectError(parsed input.ParsedLine, lineNum int, context string, cfg *config.Config) *ErrorMatch {
+func DetectError(parsed input.ParsedLine, lineNum int, context string, compiled []config.CompiledPattern) *ErrorMatch {
 
 	if strings.TrimSpace(parsed.Raw) == "" {
 		return nil
@@ -30,9 +31,9 @@ func DetectError(parsed input.ParsedLine, lineNum int, context string, cfg *conf
 	var match *ErrorMatch
 
 	if parsed.IsJSON {
-		match = detectFromJSON(parsed, lineNum, context, cfg)
+		match = detectFromJSON(parsed, lineNum, context, compiled)
 	} else {
-		match = detectFromPlainText(parsed.Raw, lineNum, context, cfg)
+		match = detectFromPlainText(parsed.Raw, lineNum, context, compiled)
 	}
 
 	if match != nil {
@@ -45,7 +46,7 @@ func DetectError(parsed input.ParsedLine, lineNum int, context string, cfg *conf
 // ─────────────────────────────────────────────────────────────────────────────
 // detectFromJSON
 // ─────────────────────────────────────────────────────────────────────────────
-func detectFromJSON(parsed input.ParsedLine, lineNum int, context string, cfg *config.Config) *ErrorMatch {
+func detectFromJSON(parsed input.ParsedLine, lineNum int, context string, compiled []config.CompiledPattern) *ErrorMatch {
 
 	level := parsed.Level
 
@@ -57,7 +58,7 @@ func detectFromJSON(parsed input.ParsedLine, lineNum int, context string, cfg *c
 		level == "fatal" || level == "critical" || level == "panic"
 
 	if isErrorLevel {
-		errType := classifyMessage(parsed.Message, cfg)
+		errType := classifyMessage(parsed.Message, compiled)
 		if errType == "" {
 			errType = "General Error"
 		}
@@ -69,34 +70,29 @@ func detectFromJSON(parsed input.ParsedLine, lineNum int, context string, cfg *c
 		}
 	}
 
-	return detectFromPlainText(parsed.Message, lineNum, context, cfg)
+	return detectFromPlainText(parsed.Message, lineNum, context, compiled)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// detectFromPlainText — keyword + regex matching on a plain text line.
+// detectFromPlainText
 // ─────────────────────────────────────────────────────────────────────────────
-func detectFromPlainText(line string, lineNum int, context string, cfg *config.Config) *ErrorMatch {
+func detectFromPlainText(line string, lineNum int, context string, compiled []config.CompiledPattern) *ErrorMatch {
 
 	lower := strings.ToLower(line)
 
-	// ── noise filter ──────────────────────────────────────────────────────────
 	if strings.Contains(lower, "info") || strings.Contains(lower, "debug") {
 		return nil
 	}
 
-	// ── custom config patterns (keyword + regex) ──────────────────────────────
-	if cfg != nil {
-		if name, matched := matchConfigPattern(line, cfg); matched {
-			return &ErrorMatch{
-				LineNumber: lineNum,
-				Type:       name,
-				Message:    line,
-				Context:    context,
-			}
+	if name, matched := matchCompiledPattern(line, lower, compiled); matched {
+		return &ErrorMatch{
+			LineNumber: lineNum,
+			Type:       name,
+			Message:    line,
+			Context:    context,
 		}
 	}
 
-	// ── built-in default patterns ─────────────────────────────────────────────
 	errType := classifyByDefault(lower)
 	if errType == "" {
 		return nil
@@ -111,35 +107,25 @@ func detectFromPlainText(line string, lineNum int, context string, cfg *config.C
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// matchConfigPattern checks a line against all user-defined patterns.
-// Returns the matched pattern name and true, or ("", false) if no match.
-// Keyword match is case-insensitive. Regex match uses the pattern as-is.
+// matchCompiledPattern checks a line against pre-compiled patterns.
+// line = original, lower = strings.ToLower(line) — both passed to avoid
+// re-computing ToLower inside the hot loop.
 // ─────────────────────────────────────────────────────────────────────────────
-func matchConfigPattern(line string, cfg *config.Config) (string, bool) {
-	lower := strings.ToLower(line)
+func matchCompiledPattern(line string, lower string, compiled []config.CompiledPattern) (string, bool) {
 
-	for _, p := range cfg.Patterns {
+	for _, cp := range compiled {
 
-		// ── keyword match ─────────────────────────────────────────────────────
-		keyword := strings.TrimSpace(p.Keyword)
-		if keyword != "" {
-			if strings.Contains(lower, strings.ToLower(keyword)) {
-				return p.Name, true
+		// ── keyword match (pre-lowercased on both sides) ──────────────────────
+		if cp.Keyword != "" {
+			if strings.Contains(lower, cp.Keyword) {
+				return cp.Name, true
 			}
 		}
 
-		// ── regex match 🆕 ────────────────────────────────────────────────────
-		regexStr := strings.TrimSpace(p.Regex)
-		if regexStr != "" {
-			// regex is already validated at load time in config.ValidatePatterns()
-			// so Compile here will not fail for valid configs.
-			// We compile per-match for now — Phase 18 will add a compiled cache.
-			re, err := regexp.Compile(regexStr)
-			if err != nil {
-				continue // defensive — should never happen after validation
-			}
-			if re.MatchString(line) {
-				return p.Name, true
+		// ── regex match (pre-compiled — zero allocation) ──────────────────────
+		if cp.Regex != nil {
+			if cp.Regex.MatchString(line) {
+				return cp.Name, true
 			}
 		}
 	}
@@ -148,23 +134,20 @@ func matchConfigPattern(line string, cfg *config.Config) (string, bool) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// classifyMessage — used by JSON path + classifyByDefault.
-// Checks config patterns first, then built-in keywords.
+// classifyMessage — used by JSON path.
 // ─────────────────────────────────────────────────────────────────────────────
-func classifyMessage(message string, cfg *config.Config) string {
+func classifyMessage(message string, compiled []config.CompiledPattern) string {
+	lower := strings.ToLower(message)
 
-	if cfg != nil {
-		if name, matched := matchConfigPattern(message, cfg); matched {
-			return name
-		}
+	if name, matched := matchCompiledPattern(message, lower, compiled); matched {
+		return name
 	}
 
-	return classifyByDefault(strings.ToLower(message))
+	return classifyByDefault(lower)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // classifyByDefault — built-in keyword patterns.
-// Isolated into its own function so it can be tested independently.
 // ─────────────────────────────────────────────────────────────────────────────
 func classifyByDefault(lower string) string {
 

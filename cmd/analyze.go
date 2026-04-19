@@ -21,7 +21,7 @@ import (
 var filterType string
 var outputFormat string
 var follow bool
-var quiet bool // 🆕 --quiet flag
+var quiet bool
 var sinceFlag string
 var untilFlag string
 
@@ -39,13 +39,14 @@ var analyzeCmd = &cobra.Command{
 			printInfo("⚠️  Config not loaded (using default rules)", quiet)
 			cfg = nil
 		}
+		compiled := cfg.Compile() // ✅ compile once, reuse for every line
 
 		file := args[0]
 
 		info, err := os.Stat(file)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "❌ Error:", err)
-			os.Exit(2) // exit 2 = usage/input error (not a log error)
+			os.Exit(2)
 		}
 
 		printInfo(ui.SuccessStyle.Render("✅ File found: "+file), quiet)
@@ -53,7 +54,7 @@ var analyzeCmd = &cobra.Command{
 
 		// ── watch mode (blocking — exits when interrupted) ────────────────────
 		if follow {
-			handleWatchMode(file, cfg, quiet)
+			handleWatchMode(file, compiled, quiet)
 			return
 		}
 
@@ -61,9 +62,9 @@ var analyzeCmd = &cobra.Command{
 		var errors []patterns.ErrorMatch
 
 		if info.IsDir() {
-			errors = handleFolderMode(file, cfg, quiet)
+			errors = handleFolderMode(file, compiled, quiet)
 		} else {
-			errors = handleSingleFileMode(file, cfg)
+			errors = handleSingleFileMode(file, compiled)
 		}
 
 		// ── filter ────────────────────────────────────────────────────────────
@@ -99,17 +100,16 @@ func init() {
 // STEP 1 — Watch Mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-func handleWatchMode(file string, cfg *config.Config, quiet bool) {
+func handleWatchMode(file string, compiled []config.CompiledPattern, quiet bool) {
 	printInfo("👀 Watching log file in real-time... (Ctrl+C to stop)", quiet)
 
 	err := input.FollowFile(file, func(line string) {
 		parsed := input.ParseLine(line)
-		e := patterns.DetectError(parsed, 0, "", cfg)
+		e := patterns.DetectError(parsed, 0, "", compiled) // ✅
 		if e == nil {
 			return
 		}
 
-		// always print errors even in quiet mode — watch mode is interactive
 		fmt.Println(ui.ErrorStyle.Render("\n🔴 ERROR DETECTED"))
 		fmt.Println("Type   :", e.Type)
 		fmt.Println("Message:", e.Message)
@@ -129,7 +129,7 @@ func handleWatchMode(file string, cfg *config.Config, quiet bool) {
 // STEP 2 — Folder Mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-func handleFolderMode(dir string, cfg *config.Config, quiet bool) []patterns.ErrorMatch {
+func handleFolderMode(dir string, compiled []config.CompiledPattern, quiet bool) []patterns.ErrorMatch {
 	printInfo("📂 Scanning folder: "+dir, quiet)
 
 	files, err := os.ReadDir(dir)
@@ -148,7 +148,7 @@ func handleFolderMode(dir string, cfg *config.Config, quiet bool) []patterns.Err
 		printInfo("📄 Processing: "+f.Name(), quiet)
 
 		fullPath := dir + "/" + f.Name()
-		fileErrors := collectErrors(fullPath, f.Name(), cfg)
+		fileErrors := collectErrors(fullPath, f.Name(), compiled) // ✅
 		allErrors = append(allErrors, fileErrors...)
 	}
 
@@ -159,32 +159,30 @@ func handleFolderMode(dir string, cfg *config.Config, quiet bool) []patterns.Err
 // STEP 3 — Single File Mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-func handleSingleFileMode(file string, cfg *config.Config) []patterns.ErrorMatch {
-	return collectErrors(file, file, cfg)
+func handleSingleFileMode(file string, compiled []config.CompiledPattern) []patterns.ErrorMatch {
+	return collectErrors(file, file, compiled) // ✅
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHARED — collectErrors (used by both folder and single file)
+// SHARED — collectErrors
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FIND this function in analyze.go and update the callback:
-
-func collectErrors(filepath string, label string, cfg *config.Config) []patterns.ErrorMatch {
+func collectErrors(filepath string, label string, compiled []config.CompiledPattern) []patterns.ErrorMatch {
 	var errors []patterns.ErrorMatch
 	var lastError *patterns.ErrorMatch
 
-	input.ProcessFile(filepath, func(parsed input.ParsedLine, lineNum int) { // ← ParsedLine now
+	input.ProcessFile(filepath, func(parsed input.ParsedLine, lineNum int) {
 
 		if lastError != nil {
-			if strings.TrimSpace(parsed.Raw) == "" { // ← use parsed.Raw
+			if strings.TrimSpace(parsed.Raw) == "" {
 				lastError = nil
 				return
 			}
-			lastError.Context += "\n" + parsed.Raw // ← use parsed.Raw
+			lastError.Context += "\n" + parsed.Raw
 			return
 		}
 
-		e := patterns.DetectError(parsed, lineNum, "", cfg) // ← pass parsed directly
+		e := patterns.DetectError(parsed, lineNum, "", compiled) // ✅
 		if e != nil {
 			e.File = label
 			errors = append(errors, *e)
@@ -214,13 +212,13 @@ func applyFilter(errors []patterns.ErrorMatch, filterType string) []patterns.Err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// applyTimeFilter removes errors outside the --since / --until window.
-// Errors with zero timestamp (plain text logs with no timestamp) are always
-// kept — we cannot know when they occurred so we err on the side of inclusion.
+// applyTimeFilter — removes errors outside the --since / --until window.
+// Errors with zero timestamp (plain text) are always kept.
 // ─────────────────────────────────────────────────────────────────────────────
+
 func applyTimeFilter(errors []patterns.ErrorMatch, since string, until string, quiet bool) []patterns.ErrorMatch {
 	if since == "" && until == "" {
-		return errors // nothing to filter
+		return errors
 	}
 
 	var sinceTime, untilTime time.Time
@@ -250,32 +248,28 @@ func applyTimeFilter(errors []patterns.ErrorMatch, since string, until string, q
 	var filtered []patterns.ErrorMatch
 
 	for _, e := range errors {
-		// keep errors with no timestamp — cannot filter what we cannot read
 		if e.Timestamp.IsZero() {
 			filtered = append(filtered, e)
 			continue
 		}
-
 		if !sinceTime.IsZero() && e.Timestamp.Before(sinceTime) {
-			continue // too early
+			continue
 		}
 		if !untilTime.IsZero() && e.Timestamp.After(untilTime) {
-			continue // too late
+			continue
 		}
-
 		filtered = append(filtered, e)
 	}
 
 	return filtered
 }
 
-// parseUserTime tries two common formats for --since / --until input.
 func parseUserTime(s string) (time.Time, error) {
 	formats := []string{
-		time.RFC3339,          // 2026-04-19T14:00:00Z
-		"2006-01-02T15:04:05", // 2026-04-19T14:00:00  (no timezone — assumed local)
-		"2006-01-02 15:04:05", // 2026-04-19 14:00:00
-		"2006-01-02",          // 2026-04-19  (date only — midnight)
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
 	}
 	for _, f := range formats {
 		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
@@ -291,7 +285,7 @@ func parseUserTime(s string) (time.Time, error) {
 
 func printReport(summaryData []patterns.ErrorMatch, filterType string, quiet bool) {
 	if quiet {
-		return // silent mode — no output, only exit code matters
+		return
 	}
 
 	fmt.Println(ui.TitleStyle.Render("\n🚨 ERROR REPORT"))
@@ -303,13 +297,11 @@ func printReport(summaryData []patterns.ErrorMatch, filterType string, quiet boo
 		)
 	}
 
-	// ── group by message ──────────────────────────────────────────────────────
 	grouped := make(map[string][]patterns.ErrorMatch)
 	for _, e := range summaryData {
 		grouped[e.Message] = append(grouped[e.Message], e)
 	}
 
-	// ── print each group ──────────────────────────────────────────────────────
 	for msg, group := range grouped {
 		count := len(group)
 		e := group[0]
@@ -344,7 +336,6 @@ func printReport(summaryData []patterns.ErrorMatch, filterType string, quiet boo
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	}
 
-	// ── summary ───────────────────────────────────────────────────────────────
 	summary := analyzer.AggregateErrors(summaryData)
 
 	fmt.Println(ui.TitleStyle.Render("\n📊 SUMMARY REPORT"))
@@ -360,7 +351,6 @@ func printReport(summaryData []patterns.ErrorMatch, filterType string, quiet boo
 		}
 	}
 
-	// ── file summary ──────────────────────────────────────────────────────────
 	fileCount := make(map[string]int)
 	for _, e := range summaryData {
 		fileCount[e.File]++

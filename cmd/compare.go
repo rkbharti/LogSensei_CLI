@@ -25,6 +25,7 @@ var compareCmd = &cobra.Command{
 			fmt.Println("⚠️ Config not loaded (using default rules)")
 			cfg = nil
 		}
+		compiled := cfg.Compile()
 
 		oldFile := args[0]
 		newFile := args[1]
@@ -40,8 +41,8 @@ var compareCmd = &cobra.Command{
 
 		fmt.Println("🔍 Comparing logs...")
 
-		oldErrors := analyzeFile(oldFile, cfg)
-		newErrors := analyzeFile(newFile, cfg)
+		oldErrors := analyzeFile(oldFile, compiled)
+		newErrors := analyzeFile(newFile, compiled)
 
 		oldSummary := analyzer.AggregateErrors(oldErrors)
 		newSummary := analyzer.AggregateErrors(newErrors)
@@ -130,7 +131,7 @@ var compareCmd = &cobra.Command{
 // Used by compare command for both old and new files.
 // ─────────────────────────────────────────────────────────────────────────────
 
-func analyzeFile(file string, cfg *config.Config) []patterns.ErrorMatch {
+func analyzeFile(file string, compiled []config.CompiledPattern) []patterns.ErrorMatch {
 
 	var errors []patterns.ErrorMatch
 	var lastError *patterns.ErrorMatch
@@ -148,7 +149,7 @@ func analyzeFile(file string, cfg *config.Config) []patterns.ErrorMatch {
 		}
 
 		// ── error detection ───────────────────────────────────────────────────
-		e := patterns.DetectError(parsed, lineNum, "", cfg) // ✅ fixed
+		e := patterns.DetectError(parsed, lineNum, "", compiled)
 		if e != nil {
 			errors = append(errors, *e)
 			lastError = &errors[len(errors)-1]
