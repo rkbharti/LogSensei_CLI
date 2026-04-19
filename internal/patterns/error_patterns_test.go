@@ -1,0 +1,238 @@
+package patterns
+
+import (
+	"testing"
+
+	"github.com/rkbharti/devdebug/internal/config"
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Table-driven tests for DetectError()
+// Each test case is one row: input line → expected output
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestDetectError(t *testing.T) {
+
+	tests := []struct {
+		name         string         // what we are testing
+		line         string         // input log line
+		cfg          *config.Config // nil = use default patterns
+		wantNil      bool           // true = expect no error detected
+		wantType     string         // expected ErrorMatch.Type
+		wantContains string         // expected substring in ErrorMatch.Message
+	}{
+		// ── should return nil (not errors) ────────────────────────────────────
+		{
+			name:    "empty line is ignored",
+			line:    "",
+			wantNil: true,
+		},
+		{
+			name:    "whitespace-only line is ignored",
+			line:    "     ",
+			wantNil: true,
+		},
+		{
+			name:    "INFO log is ignored",
+			line:    "[INFO] Server started on port 8080",
+			wantNil: true,
+		},
+		{
+			name:    "DEBUG log is ignored",
+			line:    "[DEBUG] connecting to database",
+			wantNil: true,
+		},
+		{
+			name:    "INFO log with mixed case is ignored",
+			line:    "[Info] Request received",
+			wantNil: true,
+		},
+
+		// ── panic detection ───────────────────────────────────────────────────
+		{
+			name:         "lowercase panic is detected",
+			line:         "panic: runtime error: invalid memory address",
+			wantNil:      false,
+			wantType:     "Panic Error",
+			wantContains: "panic",
+		},
+		{
+			name:         "uppercase PANIC is detected",
+			line:         "PANIC: goroutine died",
+			wantNil:      false,
+			wantType:     "Panic Error",
+			wantContains: "PANIC",
+		},
+
+		// ── general error detection ───────────────────────────────────────────
+		{
+			name:         "line with 'error:' is detected",
+			line:         "error: failed to open config file",
+			wantNil:      false,
+			wantType:     "General Error",
+			wantContains: "error",
+		},
+		{
+			name:         "line starting with 'error ' is detected",
+			line:         "error reading socket",
+			wantNil:      false,
+			wantType:     "General Error",
+			wantContains: "error reading",
+		},
+		{
+			name:         "line with exception is detected",
+			line:         "NullPointerException at main.go:42",
+			wantNil:      false,
+			wantType:     "General Error",
+			wantContains: "Exception",
+		},
+
+		// ── timeout detection ─────────────────────────────────────────────────
+		{
+			name:         "request timeout is detected",
+			line:         "request timeout after 30s",
+			wantNil:      false,
+			wantType:     "Timeout Error",
+			wantContains: "timeout",
+		},
+		{
+			name:         "connection timeout is detected",
+			line:         "connection timeout to redis:6379",
+			wantNil:      false,
+			wantType:     "Timeout Error",
+			wantContains: "connection timeout",
+		},
+
+		// ── normal log lines that should NOT be detected ──────────────────────
+		{
+			name:    "normal log line with no keywords is ignored",
+			line:    "Server running on port 3000",
+			wantNil: true,
+		},
+		{
+			name:    "warning log without error keyword is ignored",
+			line:    "WARN: memory usage high",
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			result := DetectError(tt.line, 1, "", tt.cfg)
+
+			// ── nil check ─────────────────────────────────────────────────────
+			if tt.wantNil {
+				if result != nil {
+					t.Errorf("expected nil but got: Type=%q Message=%q", result.Type, result.Message)
+				}
+				return
+			}
+
+			// ── non-nil check ─────────────────────────────────────────────────
+			if result == nil {
+				t.Fatalf("expected ErrorMatch but got nil for line: %q", tt.line)
+			}
+
+			if result.Type != tt.wantType {
+				t.Errorf("Type: got %q, want %q", result.Type, tt.wantType)
+			}
+
+			if tt.wantContains != "" {
+				found := false
+				for i := 0; i <= len(result.Message)-len(tt.wantContains); i++ {
+					if result.Message[i:i+len(tt.wantContains)] == tt.wantContains {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Message %q does not contain %q", result.Message, tt.wantContains)
+				}
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test custom config patterns
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestDetectError_CustomConfig(t *testing.T) {
+
+	cfg := &config.Config{
+		Patterns: []config.Pattern{
+			{Name: "DB Down", Keyword: "database unreachable"},
+			{Name: "Auth Fail", Keyword: "unauthorized"},
+			{Name: "Empty Pattern", Keyword: ""},         // should be skipped safely
+			{Name: "Whitespace Pattern", Keyword: "   "}, // should be skipped safely
+		},
+	}
+
+	tests := []struct {
+		name     string
+		line     string
+		wantNil  bool
+		wantType string
+	}{
+		{
+			name:     "custom keyword matched",
+			line:     "database unreachable: host=db01",
+			wantNil:  false,
+			wantType: "DB Down",
+		},
+		{
+			name:     "custom keyword case insensitive",
+			line:     "Unauthorized access attempt from 192.168.1.1",
+			wantNil:  false,
+			wantType: "Auth Fail",
+		},
+		{
+			name:    "empty keyword pattern does not panic",
+			line:    "some random log line",
+			wantNil: true,
+		},
+		{
+			name:    "whitespace keyword pattern does not panic",
+			line:    "another log line",
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetectError(tt.line, 1, "", cfg)
+
+			if tt.wantNil {
+				if result != nil {
+					t.Errorf("expected nil but got: Type=%q", result.Type)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Fatalf("expected match but got nil for line: %q", tt.line)
+			}
+
+			if result.Type != tt.wantType {
+				t.Errorf("Type: got %q, want %q", result.Type, tt.wantType)
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test line number is correctly stored
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestDetectError_LineNumber(t *testing.T) {
+	result := DetectError("panic: nil pointer dereference", 42, "", nil)
+
+	if result == nil {
+		t.Fatal("expected ErrorMatch, got nil")
+	}
+
+	if result.LineNumber != 42 {
+		t.Errorf("LineNumber: got %d, want 42", result.LineNumber)
+	}
+}
