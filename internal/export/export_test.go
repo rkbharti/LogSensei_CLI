@@ -154,7 +154,7 @@ func TestExportMarkdown(t *testing.T) {
 		data, _ := os.ReadFile(filepath.Join(dir, "report.md"))
 		content := string(data)
 
-		if !strings.Contains(content, "# DevDebug Report") {
+		if !strings.Contains(content, "# LogSensei Report") {
 			t.Error("report.md missing title header")
 		}
 	})
@@ -202,7 +202,7 @@ func TestExportMarkdown(t *testing.T) {
 		data, _ := os.ReadFile(filepath.Join(dir, "report.md"))
 		content := string(data)
 
-		if !strings.Contains(content, "# DevDebug Report") {
+		if !strings.Contains(content, "# LogSensei Report") {
 			t.Error("report.md missing title even for empty export")
 		}
 		if strings.Contains(content, "## Error at Line") {

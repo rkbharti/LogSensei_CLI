@@ -20,7 +20,7 @@ var compareCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 
-		cfg, err := config.LoadConfig("devdebug.yaml")
+		cfg, err := config.LoadConfig("logsensei.yaml")
 		if err != nil {
 			fmt.Println("⚠️ Config not loaded (using default rules)")
 			cfg = nil

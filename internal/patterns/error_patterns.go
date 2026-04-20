@@ -79,7 +79,17 @@ func detectFromJSON(parsed input.ParsedLine, lineNum int, context string, compil
 func detectFromPlainText(line string, lineNum int, context string, compiled []config.CompiledPattern) *ErrorMatch {
 
 	lower := strings.ToLower(line)
-
+	fields := strings.Fields(line)
+	if len(fields) >= 3 {
+		levelField := strings.ToLower(fields[2])
+		// Skip pure noise levels — only by position, not substring
+		if strings.HasPrefix(levelField, "trace") ||
+			strings.HasPrefix(levelField, "event") ||
+			strings.HasPrefix(levelField, "debug") ||
+			strings.HasPrefix(levelField, "info") {
+			return nil
+		}
+	}
 	if strings.Contains(lower, "info") || strings.Contains(lower, "debug") {
 		return nil
 	}
@@ -151,19 +161,99 @@ func classifyMessage(message string, compiled []config.CompiledPattern) string {
 // ─────────────────────────────────────────────────────────────────────────────
 func classifyByDefault(lower string) string {
 
+	// ── specific patterns first (order matters — specific before generic) ───
+
+	// Socket / multicast
+	if strings.Contains(lower, "setsockopt") ||
+		strings.Contains(lower, "mcast") ||
+		strings.Contains(lower, "mailslot") {
+		return "Socket Error"
+	}
+
+	// Protocol / RSVP
+	if strings.Contains(lower, "proterr") ||
+		strings.Contains(lower, "rsvp") ||
+		strings.Contains(lower, "pathtear") {
+		return "Protocol Error"
+	}
+
+	// EDC (IBM TCP/IP error codes)
+	if strings.Contains(lower, "edc") {
+		return "EDC Error"
+	}
+
+	// Oracle
+	if strings.Contains(lower, "ora-") ||
+		strings.Contains(lower, "tns:") ||
+		strings.Contains(lower, "sp2-") {
+		return "Oracle Error"
+	}
+
+	// Panic
 	if strings.Contains(lower, "panic") {
 		return "Panic Error"
 	}
-	if strings.Contains(lower, "error:") ||
-		strings.HasPrefix(lower, "error ") ||
-		strings.Contains(lower, " exception") {
+
+	// Fatal
+	if strings.Contains(lower, "fatal") {
+		return "Fatal Error"
+	}
+
+	// Critical
+	if strings.Contains(lower, "critical") {
+		return "Critical Error"
+	}
+
+	// General error — broader match
+	if strings.Contains(lower, "error") ||
+		strings.Contains(lower, "exception") ||
+		strings.Contains(lower, "traceback") ||
+		strings.Contains(lower, "stacktrace") {
 		return "General Error"
 	}
-	if strings.Contains(lower, "timeout ") ||
-		strings.Contains(lower, "request timeout") ||
+
+	// Timeout
+	if strings.Contains(lower, "timeout") ||
 		strings.Contains(lower, "timed out") ||
-		strings.Contains(lower, "connection timeout") {
+		strings.Contains(lower, "deadline exceeded") {
 		return "Timeout Error"
+	}
+
+	// Connection
+	if strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "connection reset") ||
+		strings.Contains(lower, "no route to host") ||
+		strings.Contains(lower, "network unreachable") {
+		return "Connection Error"
+	}
+
+	// Memory
+	if strings.Contains(lower, "out of memory") ||
+		strings.Contains(lower, "oom") ||
+		strings.Contains(lower, "killed") {
+		return "Memory Error"
+	}
+
+	// Auth
+	if strings.Contains(lower, "unauthorized") ||
+		strings.Contains(lower, "forbidden") ||
+		strings.Contains(lower, "access denied") ||
+		strings.Contains(lower, "permission denied") {
+		return "Auth Error"
+	}
+
+	// Crash signals
+	if strings.Contains(lower, "segfault") ||
+		strings.Contains(lower, "sigsegv") ||
+		strings.Contains(lower, "sigkill") ||
+		strings.Contains(lower, "core dumped") {
+		return "Crash Error"
+	}
+
+	// Failed operations — last resort generic
+	if strings.Contains(lower, "failed") ||
+		strings.Contains(lower, "failure") {
+		return "Operation Failed"
 	}
 
 	return ""

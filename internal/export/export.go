@@ -30,7 +30,7 @@ func ExportMarkdown(errors []patterns.ErrorMatch) error {
 	}
 	defer file.Close()
 
-	content := "# DevDebug Report\n\n"
+	content := "# LogSensei Report\n\n"
 
 	for _, e := range errors {
 		content += fmt.Sprintf("## Error at Line %d\n", e.LineNumber)

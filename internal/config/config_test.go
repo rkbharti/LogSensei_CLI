@@ -15,7 +15,7 @@ import (
 func writeTempYAML(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "devdebug.yaml")
+	path := filepath.Join(dir, "logsensei.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write temp YAML: %v", err)
 	}
@@ -135,7 +135,7 @@ patterns:
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, err := LoadConfig("nonexistent_path/devdebug.yaml")
+	_, err := LoadConfig("nonexistent_path/logsensei.yaml")
 	if err == nil {
 		t.Error("expected error for missing file but got nil")
 	}

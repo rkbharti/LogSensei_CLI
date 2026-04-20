@@ -8,31 +8,65 @@ type Explanation struct {
 	Suggestion string
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// explanationRule defines one matchable error pattern.
-// keyword   — substring to match against the lowercased message
-// reason    — human-readable cause
-// suggestion — actionable fix
-// ─────────────────────────────────────────────────────────────────────────────
-
 type explanationRule struct {
 	keyword    string
 	reason     string
 	suggestion string
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// explanationRegistry is the single source of truth for all error explanations.
-//
-// HOW TO ADD A NEW ERROR TYPE:
-//   Just append a new explanationRule{} to this slice.
-//   No logic changes needed anywhere else.
-//
-// ORDER MATTERS — first match wins.
-// Put more specific patterns before generic ones.
-// ─────────────────────────────────────────────────────────────────────────────
-
 var explanationRegistry = []explanationRule{
+
+	// ── Oracle / Network OS errors ────────────────────────────────────────────
+	{
+		keyword:    "setsockopt",
+		reason:     "A socket option (multicast/network) could not be set on the interface.",
+		suggestion: "Check if the network adapter supports multicast. Try disabling MCAST or binding to a different interface.",
+	},
+	{
+		keyword:    "mcast_add",
+		reason:     "Failed to join a multicast group — the address may not be available on this interface.",
+		suggestion: "Verify the network interface supports multicast. Check with 'netstat -g' or review adapter settings.",
+	},
+	{
+		keyword:    "edc8116",
+		reason:     "EDC8116I — Address not available. The requested IP or socket address cannot be used.",
+		suggestion: "Ensure the IP address is assigned to a valid network interface. Check TCP/IP stack configuration.",
+	},
+	{
+		keyword:    "edc",
+		reason:     "An EDC (TCP/IP) error code was raised by the network stack.",
+		suggestion: "Look up the specific EDC code in IBM TCP/IP documentation. Check socket and network configuration.",
+	},
+	{
+		keyword:    "proterr",
+		reason:     "A protocol state machine received an unexpected event for its current state.",
+		suggestion: "Check RSVP/network signaling configuration. The flow may have been torn down unexpectedly.",
+	},
+	{
+		keyword:    "rsvp",
+		reason:     "RSVP (Resource Reservation Protocol) encountered a state or signaling error.",
+		suggestion: "Review RSVP session configuration. Check if PATHTEAR/RESVERR events are expected in your setup.",
+	},
+	{
+		keyword:    "pathtear",
+		reason:     "An RSVP PATH teardown was received in an unexpected session state.",
+		suggestion: "Investigate whether the upstream RSVP node terminated the session prematurely.",
+	},
+	{
+		keyword:    "mailslot",
+		reason:     "A mailslot (IPC communication channel) failed during creation or socket setup.",
+		suggestion: "Check system IPC limits and network interface binding. Review mailslot service configuration.",
+	},
+	{
+		keyword:    "ora-",
+		reason:     "An Oracle database error occurred.",
+		suggestion: "Look up the ORA- error code on Oracle docs. Common causes: missing table, bad credentials, or connection issue.",
+	},
+	{
+		keyword:    "tns:",
+		reason:     "Oracle TNS listener error — could not resolve service name or connect to listener.",
+		suggestion: "Check tnsnames.ora and listener.ora. Verify Oracle listener is running with 'lsnrctl status'.",
+	},
 
 	// ── Go runtime errors ─────────────────────────────────────────────────────
 	{
@@ -187,13 +221,24 @@ var explanationRegistry = []explanationRule{
 		reason:     "A dictionary key does not exist.",
 		suggestion: "Use dict.get(key, default) instead of dict[key] to safely access keys.",
 	},
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ExplainError returns a human-readable explanation for a given error message.
-// It matches the first rule in explanationRegistry whose keyword appears
-// in the lowercased message. Falls back to a generic explanation if no match.
-// ─────────────────────────────────────────────────────────────────────────────
+	// ── generic fallback rules ────────────────────────────────────────────────
+	{
+		keyword:    "failed",
+		reason:     "An operation failed during execution.",
+		suggestion: "Check the surrounding log lines for the root cause. Look for resource or permission issues.",
+	},
+	{
+		keyword:    "fatal",
+		reason:     "A fatal error caused the process to terminate.",
+		suggestion: "Investigate the root cause immediately. Check system resources and application state.",
+	},
+	{
+		keyword:    "out of memory",
+		reason:     "The process ran out of available memory.",
+		suggestion: "Increase memory limits, optimize memory usage, or check for memory leaks.",
+	},
+}
 
 func ExplainError(message string) Explanation {
 	lower := strings.ToLower(message)
@@ -207,7 +252,6 @@ func ExplainError(message string) Explanation {
 		}
 	}
 
-	// fallback — unknown error
 	return Explanation{
 		Reason:     "Unknown error occurred.",
 		Suggestion: "Check logs and debug manually.",
