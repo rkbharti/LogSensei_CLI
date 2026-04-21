@@ -90,9 +90,6 @@ func detectFromPlainText(line string, lineNum int, context string, compiled []co
 			return nil
 		}
 	}
-	if strings.Contains(lower, "info") || strings.Contains(lower, "debug") {
-		return nil
-	}
 
 	if name, matched := matchCompiledPattern(line, lower, compiled); matched {
 		return &ErrorMatch{
@@ -238,7 +235,12 @@ func classifyByDefault(lower string) string {
 	if strings.Contains(lower, "unauthorized") ||
 		strings.Contains(lower, "forbidden") ||
 		strings.Contains(lower, "access denied") ||
-		strings.Contains(lower, "permission denied") {
+		strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "authentication failure") ||
+		strings.Contains(lower, "check pass; user unknown") ||
+		strings.Contains(lower, "failed login") ||
+		strings.Contains(lower, "invalid user") ||
+		strings.Contains(lower, "bad username") {
 		return "Auth Error"
 	}
 
